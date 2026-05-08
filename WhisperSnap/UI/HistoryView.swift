@@ -79,7 +79,7 @@ private struct HistoryRow: View {
                 .lineLimit(3)
 
             HStack(spacing: 8) {
-                Text(record.timestamp, style: .relative)
+                Text(record.timestamp, style: .date)
                     .font(.caption)
                     .foregroundStyle(.secondary)
 

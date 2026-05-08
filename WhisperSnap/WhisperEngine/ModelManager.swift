@@ -7,33 +7,123 @@ struct WhisperModelInfo: Identifiable, Hashable {
     let displayName: String
     let sizeDescription: String
 
-    static let known: [WhisperModelInfo] = [
-        WhisperModelInfo(id: "openai_whisper-tiny", displayName: "Tiny (Fastest)", sizeDescription: "~75 MB"),
-        WhisperModelInfo(id: "openai_whisper-base", displayName: "Base", sizeDescription: "~145 MB"),
-        WhisperModelInfo(id: "openai_whisper-small", displayName: "Small", sizeDescription: "~466 MB"),
-        WhisperModelInfo(id: "openai_whisper-large-v3-turbo", displayName: "Large v3 Turbo (Best)", sizeDescription: "~809 MB"),
-    ]
+    // Preferred display metadata for well-known model IDs.
+    static func displayName(for id: String) -> String {
+        switch id {
+        case "openai_whisper-tiny":              return "Tiny (Fastest)"
+        case "openai_whisper-tiny.en":           return "Tiny English"
+        case "openai_whisper-base":              return "Base"
+        case "openai_whisper-base.en":           return "Base English"
+        case "openai_whisper-small":             return "Small"
+        case "openai_whisper-small.en":          return "Small English"
+        case "openai_whisper-medium":            return "Medium"
+        case "openai_whisper-medium.en":         return "Medium English"
+        case "openai_whisper-large-v2":          return "Large v2"
+        case "openai_whisper-large-v3":          return "Large v3"
+        case "openai_whisper-large-v3-turbo":    return "Large v3 Turbo (Best)"
+        default:
+            // Strip "openai_whisper-" prefix for unknown variants.
+            return id.replacingOccurrences(of: "openai_whisper-", with: "").capitalized
+        }
+    }
+
+    static func sizeDescription(for id: String) -> String {
+        switch id {
+        case "openai_whisper-tiny", "openai_whisper-tiny.en":     return "~75 MB"
+        case "openai_whisper-base", "openai_whisper-base.en":     return "~145 MB"
+        case "openai_whisper-small", "openai_whisper-small.en":   return "~466 MB"
+        case "openai_whisper-medium", "openai_whisper-medium.en": return "~766 MB"
+        case "openai_whisper-large-v2":                           return "~1.5 GB"
+        case "openai_whisper-large-v3":                           return "~1.5 GB"
+        case "openai_whisper-large-v3-turbo":                     return "~809 MB"
+        default:                                                   return ""
+        }
+    }
+
+    // Preferred order for well-known IDs (lower = shown first).
+    static func sortOrder(for id: String) -> Int {
+        let order = [
+            "openai_whisper-tiny",
+            "openai_whisper-tiny.en",
+            "openai_whisper-base",
+            "openai_whisper-base.en",
+            "openai_whisper-small",
+            "openai_whisper-small.en",
+            "openai_whisper-medium",
+            "openai_whisper-medium.en",
+            "openai_whisper-large-v2",
+            "openai_whisper-large-v3",
+            "openai_whisper-large-v3-turbo",
+        ]
+        return order.firstIndex(of: id) ?? 999
+    }
+
+    static func from(id: String) -> WhisperModelInfo {
+        WhisperModelInfo(
+            id: id,
+            displayName: Self.displayName(for: id),
+            sizeDescription: Self.sizeDescription(for: id)
+        )
+    }
+
+    // Static fallback list — used until the live fetch resolves.
+    static let fallback: [WhisperModelInfo] = [
+        "openai_whisper-tiny",
+        "openai_whisper-base",
+        "openai_whisper-small",
+        "openai_whisper-large-v3",
+    ].map { Self.from(id: $0) }
 }
 
 @Observable
 final class ModelManager {
+    var listedModels: [WhisperModelInfo] = WhisperModelInfo.fallback
     var downloadedModelIDs: Set<String> = []
     var downloadProgress: [String: Double] = [:]
     var isDownloading: [String: Bool] = [:]
+
+    private static let persistenceKey = "downloadedModelIDs"
 
     private var cacheDirectory: URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         return appSupport.appendingPathComponent("huggingface/models/argmaxinc/whisperkit-coreml")
     }
 
-    func refreshDownloadedModels() {
-        let fm = FileManager.default
-        let contents = (try? fm.contentsOfDirectory(atPath: cacheDirectory.path)) ?? []
-        downloadedModelIDs = Set(contents)
+    init() {
+        if let saved = UserDefaults.standard.array(forKey: Self.persistenceKey) as? [String] {
+            downloadedModelIDs = Set(saved)
+        }
+        syncWithFilesystem()
+    }
+
+    // MARK: - Public API
+
+    /// Fetches the real model list from the WhisperKit HuggingFace repo and updates `listedModels`.
+    func fetchAvailableModels() async {
+        do {
+            let ids = try await WhisperKit.fetchAvailableModels()
+            let models = ids
+                .map { WhisperModelInfo.from(id: $0) }
+                .sorted { WhisperModelInfo.sortOrder(for: $0.id) < WhisperModelInfo.sortOrder(for: $1.id) }
+            if !models.isEmpty {
+                listedModels = models
+            }
+        } catch {
+            // Keep fallback list; network may not be available yet.
+        }
     }
 
     func isDownloaded(_ modelID: String) -> Bool {
         downloadedModelIDs.contains(modelID)
+    }
+
+    func markAsDownloaded(_ modelID: String) {
+        downloadedModelIDs.insert(modelID)
+        persist()
+    }
+
+    func refreshDownloadedModels() {
+        syncWithFilesystem()
     }
 
     func download(_ modelID: String) async throws {
@@ -43,8 +133,8 @@ final class ModelManager {
             isDownloading[modelID] = false
             downloadProgress.removeValue(forKey: modelID)
         }
-        _ = try await WhisperKit(model: modelID, download: true)
-        downloadedModelIDs.insert(modelID)
+        _ = try await WhisperKit(model: modelID)
+        markAsDownloaded(modelID)
     }
 
     func delete(_ modelID: String) throws {
@@ -53,5 +143,24 @@ final class ModelManager {
             try FileManager.default.removeItem(at: modelDir)
         }
         downloadedModelIDs.remove(modelID)
+        persist()
+    }
+
+    // MARK: - Private
+
+    private func syncWithFilesystem() {
+        let fm = FileManager.default
+        let onDisk = Set((try? fm.contentsOfDirectory(atPath: cacheDirectory.path)) ?? [])
+        downloadedModelIDs.formUnion(onDisk)
+        // Remove IDs we know about (listed models) but are no longer on disk.
+        let knownIDs = Set(listedModels.map(\.id))
+        downloadedModelIDs = downloadedModelIDs.filter { id in
+            knownIDs.contains(id) ? onDisk.contains(id) : true
+        }
+        persist()
+    }
+
+    private func persist() {
+        UserDefaults.standard.set(Array(downloadedModelIDs), forKey: Self.persistenceKey)
     }
 }

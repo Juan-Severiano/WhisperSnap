@@ -1,9 +1,34 @@
 import Foundation
 
+enum SanitizationMode: String, CaseIterable {
+    case clean
+    case organize
+    case bullets
+
+    var displayName: String {
+        switch self {
+        case .clean: "Clean up filler words"
+        case .organize: "Organize into paragraphs"
+        case .bullets: "Convert to bullet points"
+        }
+    }
+
+    var systemPrompt: String {
+        switch self {
+        case .clean:
+            "Fix punctuation, capitalization, and remove filler words (um, uh, like, you know) from the voice transcription. Keep all meaning intact. Return only the cleaned text, no commentary."
+        case .organize:
+            "You receive a raw voice transcription. Group related ideas into well-structured paragraphs. Fix punctuation and capitalization. Remove filler words. Return only the organized text, no headers or commentary."
+        case .bullets:
+            "You receive a raw voice transcription. Convert it into a clear markdown bullet list where each bullet is a distinct idea, action item, or point. Fix grammar. Remove filler words. Return only the bullet list, no commentary."
+        }
+    }
+}
+
 actor TextSanitizerService {
     private let endpoint = URL(string: "https://api.openai.com/v1/chat/completions")!
 
-    func sanitize(_ text: String, apiKey: String) async throws -> String {
+    func sanitize(_ text: String, apiKey: String, mode: SanitizationMode = .clean) async throws -> String {
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
@@ -12,17 +37,11 @@ actor TextSanitizerService {
         let body: [String: Any] = [
             "model": "gpt-4o-mini",
             "messages": [
-                [
-                    "role": "system",
-                    "content": "You are a transcription cleaner. Fix punctuation, capitalization, and remove filler words (um, uh, like, you know) from the voice transcription. Keep all meaning intact. Return only the cleaned text, no commentary.",
-                ],
-                [
-                    "role": "user",
-                    "content": text,
-                ],
+                ["role": "system", "content": mode.systemPrompt],
+                ["role": "user", "content": text],
             ],
             "max_tokens": 2048,
-            "temperature": 0.1,
+            "temperature": 0.2,
         ]
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)

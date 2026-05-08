@@ -13,6 +13,7 @@ final class AppCoordinator {
     private let whisperEngine = WhisperEngineManager()
     private let sanitizer = TextSanitizerService()
     private let inserter = AccessibilityInserter()
+    private let hud = RecordingHUDManager()
 
     private var modelContainer: ModelContainer?
 
@@ -23,6 +24,7 @@ final class AppCoordinator {
         ShortcutManager.setup(coordinator: self)
         inserter.requestPermissionIfNeeded()
         modelManager.refreshDownloadedModels()
+        hud.update(recordingState: .idle)  // show thin idle bar immediately on launch
         Task { await preloadModel() }
     }
 
@@ -42,22 +44,22 @@ final class AppCoordinator {
     private func startRecording() async {
         do {
             try await audioCapture.startRecording()
-            appState.recordingState = .recording
+            setState(.recording)
         } catch {
-            appState.recordingState = .error(error.localizedDescription)
+            setState(.error(error.localizedDescription))
             scheduleReset(after: 4)
         }
     }
 
     private func stopAndTranscribe() async {
-        appState.recordingState = .processing
+        setState(.processing)
         let startTime = Date()
 
         do {
             let audioArray = await audioCapture.stopRecording()
 
             guard !audioArray.isEmpty else {
-                appState.recordingState = .error("No audio captured.")
+                setState(.error("No audio captured."))
                 scheduleReset(after: 3)
                 return
             }
@@ -67,12 +69,13 @@ final class AppCoordinator {
                 try await whisperEngine.loadModel(settings.activeModel)
             }
 
-            let rawText = try await whisperEngine.transcribe(audioArray: audioArray)
+            let language = settings.selectedLanguage == "auto" ? nil : settings.selectedLanguage
+            let rawText = try await whisperEngine.transcribe(audioArray: audioArray, language: language)
             let duration = Date().timeIntervalSince(startTime)
 
             let (finalText, originalText) = await applySanitizationIfEnabled(rawText)
 
-            appState.recordingState = .done(text: finalText)
+            setState(.done(text: finalText))
             deliverText(finalText)
 
             if !settings.privateMode {
@@ -81,7 +84,7 @@ final class AppCoordinator {
 
             scheduleReset(after: 1.5)
         } catch {
-            appState.recordingState = .error(error.localizedDescription)
+            setState(.error(error.localizedDescription))
             scheduleReset(after: 4)
         }
     }
@@ -92,10 +95,17 @@ final class AppCoordinator {
               !text.isEmpty else {
             return (text, nil)
         }
-        guard let sanitized = try? await sanitizer.sanitize(text, apiKey: key) else {
+        guard let sanitized = try? await sanitizer.sanitize(text, apiKey: key, mode: settings.sanitizationMode) else {
             return (text, nil)
         }
         return (sanitized, text)
+    }
+
+    // MARK: - State Management
+
+    private func setState(_ state: RecordingState) {
+        appState.recordingState = state
+        hud.update(recordingState: state)
     }
 
     // MARK: - Text Delivery
@@ -114,7 +124,7 @@ final class AppCoordinator {
 
     private func saveRecord(text: String, originalText: String?, duration: TimeInterval) {
         guard let container = modelContainer else { return }
-        let modelName = settings.activeModel  // capture on @MainActor before hopping off
+        let modelName = settings.activeModel
         Task.detached {
             let context = ModelContext(container)
             let record = TranscriptionRecord(
@@ -133,12 +143,22 @@ final class AppCoordinator {
     private func preloadModel() async {
         let isLoaded = await whisperEngine.isLoaded
         guard !isLoaded else { return }
-        try? await whisperEngine.loadModel(settings.activeModel)
+        appState.isModelLoading = true
+        defer { appState.isModelLoading = false }
+        do {
+            try await whisperEngine.loadModel(settings.activeModel)
+            modelManager.markAsDownloaded(settings.activeModel)
+        } catch {}
     }
 
     func reloadModel() async {
         await whisperEngine.unload()
-        try? await whisperEngine.loadModel(settings.activeModel)
+        appState.isModelLoading = true
+        defer { appState.isModelLoading = false }
+        do {
+            try await whisperEngine.loadModel(settings.activeModel)
+            modelManager.markAsDownloaded(settings.activeModel)
+        } catch {}
     }
 
     // MARK: - Helpers
@@ -146,10 +166,10 @@ final class AppCoordinator {
     private func scheduleReset(after seconds: Double) {
         Task {
             try? await Task.sleep(for: .seconds(seconds))
-            if case .idle = appState.recordingState { return }
-            if case .recording = appState.recordingState { return }
-            if case .processing = appState.recordingState { return }
-            appState.recordingState = .idle
+            switch appState.recordingState {
+            case .idle, .recording, .processing: return
+            default: setState(.idle)
+            }
         }
     }
 }

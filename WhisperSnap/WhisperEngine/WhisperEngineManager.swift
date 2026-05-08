@@ -30,10 +30,12 @@ actor WhisperEngineManager {
         loadedModelName = nil
     }
 
-    func transcribe(audioArray: [Float]) async throws -> String {
+    // language: nil = auto-detect, "en", "pt", "es" etc. for fixed language
+    func transcribe(audioArray: [Float], language: String?) async throws -> String {
         guard let kit = whisperKit else { throw TranscriptionError.modelNotLoaded }
 
-        let results = try await kit.transcribe(audioArray: audioArray)
+        let options = DecodingOptions(language: language)
+        let results = try await kit.transcribe(audioArray: audioArray, decodeOptions: options)
         let text = results
             .compactMap { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }

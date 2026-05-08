@@ -4,6 +4,7 @@ import Observation
 @Observable
 final class AppState {
     var recordingState: RecordingState = .idle
+    var isModelLoading: Bool = false
 }
 
 enum RecordingState: Equatable {

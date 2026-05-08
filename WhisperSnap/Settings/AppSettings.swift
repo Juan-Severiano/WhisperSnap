@@ -36,6 +36,13 @@ final class AppSettings {
         didSet { UserDefaults.standard.set(selectedLanguage, forKey: "selectedLanguage") }
     }
 
+    var sanitizationMode: SanitizationMode = {
+        let raw = UserDefaults.standard.string(forKey: "sanitizationMode") ?? SanitizationMode.clean.rawValue
+        return SanitizationMode(rawValue: raw) ?? .clean
+    }() {
+        didSet { UserDefaults.standard.set(sanitizationMode.rawValue, forKey: "sanitizationMode") }
+    }
+
     var launchAtLogin: Bool {
         get { SMAppService.mainApp.status == .enabled }
         set {

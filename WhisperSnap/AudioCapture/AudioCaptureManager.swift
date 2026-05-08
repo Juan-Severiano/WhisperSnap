@@ -2,15 +2,19 @@ import AVFoundation
 import Foundation
 
 // Thread-safe buffer for audio samples accumulated in the tap callback.
+// Fully nonisolated so it can be created and called from any actor/thread context.
+// Thread safety is provided explicitly by NSLock.
 private final class AudioFloatBuffer: @unchecked Sendable {
-    private var storage: [Float] = []
+    nonisolated(unsafe) private var storage: [Float] = []
     private let lock = NSLock()
 
-    func append(_ floats: [Float]) {
+    nonisolated init() {}
+
+    nonisolated func append(_ floats: [Float]) {
         lock.withLock { storage.append(contentsOf: floats) }
     }
 
-    func drain() -> [Float] {
+    nonisolated func drain() -> [Float] {
         lock.withLock {
             let result = storage
             storage = []

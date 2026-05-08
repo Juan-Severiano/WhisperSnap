@@ -32,10 +32,42 @@ struct SettingsView: View {
 private struct GeneralSettingsTab: View {
     @Bindable var settings: AppSettings
 
+    struct Language {
+        let code: String
+        let name: String
+    }
+
+    static let languages: [Language] = [
+        Language(code: "en", name: "English"),
+        Language(code: "pt", name: "Portuguese"),
+        Language(code: "es", name: "Spanish"),
+        Language(code: "fr", name: "French"),
+        Language(code: "de", name: "German"),
+        Language(code: "it", name: "Italian"),
+        Language(code: "nl", name: "Dutch"),
+        Language(code: "pl", name: "Polish"),
+        Language(code: "ru", name: "Russian"),
+        Language(code: "ja", name: "Japanese"),
+        Language(code: "zh", name: "Chinese"),
+        Language(code: "ko", name: "Korean"),
+        Language(code: "ar", name: "Arabic"),
+        Language(code: "hi", name: "Hindi"),
+    ]
+
     var body: some View {
         Form {
             Section("Shortcut") {
                 KeyboardShortcuts.Recorder("Toggle Recording", name: .toggleRecording)
+            }
+
+            Section("Transcription") {
+                Picker("Language", selection: $settings.selectedLanguage) {
+                    Text("Detect automatically").tag("auto")
+                    Divider()
+                    ForEach(Self.languages, id: \.code) { lang in
+                        Text(lang.name).tag(lang.code)
+                    }
+                }
             }
 
             Section("Behaviour") {
@@ -65,7 +97,7 @@ private struct ModelsSettingsTab: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            List(WhisperModelInfo.known) { model in
+            List(modelManager.listedModels) { model in
                 ModelRow(
                     model: model,
                     isActive: settings.activeModel == model.id,
@@ -86,7 +118,10 @@ private struct ModelsSettingsTab: View {
             }
             .listStyle(.inset)
         }
-        .onAppear { modelManager.refreshDownloadedModels() }
+        .onAppear {
+            modelManager.refreshDownloadedModels()
+            Task { await modelManager.fetchAvailableModels() }
+        }
     }
 }
 
@@ -160,6 +195,15 @@ private struct AISettingsTab: View {
             }
 
             if settings.enableSanitization {
+                Section("Mode") {
+                    Picker("Cleanup Mode", selection: $settings.sanitizationMode) {
+                        ForEach(SanitizationMode.allCases, id: \.self) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.radioGroup)
+                }
+
                 Section("OpenAI API Key") {
                     HStack {
                         if showKey {

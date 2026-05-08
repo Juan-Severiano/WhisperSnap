@@ -7,6 +7,10 @@ struct MenuBarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if coordinator.appState.isModelLoading {
+                modelLoadingBanner
+                Divider().padding(.horizontal, 8)
+            }
             recordButton
             Divider().padding(.horizontal, 8)
             lastResultSection
@@ -15,6 +19,20 @@ struct MenuBarView: View {
         }
         .frame(width: 280)
         .padding(.vertical, 8)
+    }
+
+    private var modelLoadingBanner: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+                .scaleEffect(0.75)
+            Text("Loading model…")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 7)
     }
 
     @ViewBuilder
