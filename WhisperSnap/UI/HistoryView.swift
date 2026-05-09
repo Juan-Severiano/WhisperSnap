@@ -119,3 +119,37 @@ private struct HistoryRow: View {
         .padding(.vertical, 4)
     }
 }
+
+@MainActor
+private func makeHistoryPreviewContainer(withSamples: Bool) -> ModelContainer {
+    let config = ModelConfiguration(isStoredInMemoryOnly: true)
+    let container = try! ModelContainer(for: TranscriptionRecord.self, configurations: config)
+
+    if withSamples {
+        let context = ModelContext(container)
+        context.insert(TranscriptionRecord(text: "Ship the menu bar focus fix today.", duration: 4.2, modelUsed: "openai_whisper-tiny"))
+        context.insert(TranscriptionRecord(text: "Esta transcricao foi limpa por IA.", originalText: "esta transcricao foi limpa por ia", duration: 6.1, modelUsed: "openai_whisper-base"))
+        context.insert(TranscriptionRecord(text: "Remember to test settings and history windows.", duration: 3.4, modelUsed: "openai_whisper-small"))
+        try? context.save()
+    }
+
+    return container
+}
+
+#if DEBUG
+struct HistoryView_Previews: PreviewProvider {
+    static var previews: some View {
+        Group {
+            HistoryView()
+                .modelContainer(makeHistoryPreviewContainer(withSamples: true))
+                .frame(width: 600, height: 420)
+                .previewDisplayName("History - With Data")
+
+            HistoryView()
+                .modelContainer(makeHistoryPreviewContainer(withSamples: false))
+                .frame(width: 600, height: 420)
+                .previewDisplayName("History - Empty")
+        }
+    }
+}
+#endif

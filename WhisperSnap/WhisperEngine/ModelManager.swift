@@ -11,18 +11,12 @@ struct WhisperModelInfo: Identifiable, Hashable {
     static func displayName(for id: String) -> String {
         switch id {
         case "openai_whisper-tiny":              return "Tiny (Fastest)"
-        case "openai_whisper-tiny.en":           return "Tiny English"
         case "openai_whisper-base":              return "Base"
-        case "openai_whisper-base.en":           return "Base English"
         case "openai_whisper-small":             return "Small"
-        case "openai_whisper-small.en":          return "Small English"
         case "openai_whisper-medium":            return "Medium"
-        case "openai_whisper-medium.en":         return "Medium English"
-        case "openai_whisper-large-v2":          return "Large v2"
         case "openai_whisper-large-v3":          return "Large v3"
-        case "openai_whisper-large-v3-turbo":    return "Large v3 Turbo (Best)"
         default:
-            // Strip "openai_whisper-" prefix for unknown variants.
+            
             return id.replacingOccurrences(of: "openai_whisper-", with: "").capitalized
         }
     }

@@ -27,6 +27,13 @@ final class AppCoordinator {
         ShortcutManager.setup(coordinator: self)
         inserter.requestPermissionIfNeeded()
         modelManager.refreshDownloadedModels()
+        Task { @MainActor in
+            // Show the thin idle HUD on launch, but defer a bit to avoid
+            // competing with initial scene/window setup.
+            try? await Task.sleep(for: .milliseconds(200))
+            guard appState.recordingState == .idle else { return }
+            hud.update(recordingState: .idle)
+        }
         Task { await preloadModel() }
     }
 

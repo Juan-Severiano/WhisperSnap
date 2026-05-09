@@ -40,3 +40,18 @@ struct StatusItemIcon: View {
         return source
     }
 }
+
+#if DEBUG
+struct StatusItemIcon_Previews: PreviewProvider {
+    static var previews: some View {
+        HStack(spacing: 12) {
+            StatusItemIcon(state: .idle)
+            StatusItemIcon(state: .processing)
+            StatusItemIcon(state: .done(text: "ok"))
+            StatusItemIcon(state: .error("fail"))
+        }
+        .padding()
+        .previewDisplayName("Status Icon States")
+    }
+}
+#endif

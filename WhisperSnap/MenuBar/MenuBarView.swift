@@ -111,10 +111,12 @@ struct MenuBarView: View {
     private var menuActions: some View {
         VStack(spacing: 2) {
             MenuBarButton(label: "Show History", icon: "clock") {
+                NSApplication.shared.activate(ignoringOtherApps: true)
                 openWindow(id: "history")
             }
 
             MenuBarButton(label: "Settings", icon: "gear") {
+                NSApplication.shared.activate(ignoringOtherApps: true)
                 openSettings()
             }
 
@@ -168,3 +170,27 @@ private struct MenuBarButton: View {
         .padding(.horizontal, 8)
     }
 }
+
+#if DEBUG
+struct MenuBarView_Previews: PreviewProvider {
+    static var previews: some View {
+        Group {
+            MenuBarView()
+                .environment(makeCoordinator(state: .idle))
+                .frame(width: 280)
+                .previewDisplayName("Menu Bar - Idle")
+
+            MenuBarView()
+                .environment(makeCoordinator(state: .done(text: "This is a sample transcription preview text that appears in the menu.")))
+                .frame(width: 280)
+                .previewDisplayName("Menu Bar - Result")
+        }
+    }
+
+    private static func makeCoordinator(state: RecordingState) -> AppCoordinator {
+        let coordinator = AppCoordinator()
+        coordinator.appState.recordingState = state
+        return coordinator
+    }
+}
+#endif

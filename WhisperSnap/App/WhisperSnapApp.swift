@@ -31,23 +31,14 @@ struct WhisperSnapApp: App {
         Settings {
             SettingsView()
                 .environment(coordinator)
+                .bringWindowToFrontOnAppear()
         }
 
         Window("Transcription History", id: "history") {
             HistoryView()
                 .modelContainer(sharedContainer)
+                .bringWindowToFrontOnAppear()
         }
         .defaultSize(width: 600, height: 480)
-    }
-
-    private var primaryActionTitle: String {
-        switch coordinator.appState.recordingState {
-        case .idle, .done, .error:
-            "Start Recording"
-        case .recording:
-            "Stop Recording"
-        case .processing:
-            "Transcribing..."
-        }
     }
 }

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct SettingsView: View {
@@ -267,11 +268,17 @@ private struct AboutTab: View {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
     }
 
+    private var appIcon: NSImage {
+        NSApplication.shared.applicationIconImage
+    }
+
     var body: some View {
         VStack(spacing: 16) {
-            Image(systemName: "mic.circle.fill")
-                .font(.system(size: 56))
-                .foregroundStyle(.bar)
+            Image(nsImage: appIcon)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 72, height: 72)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
             VStack(spacing: 4) {
                 Text("WhisperSnap")
@@ -289,3 +296,20 @@ private struct AboutTab: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
+
+#if DEBUG
+struct SettingsView_Previews: PreviewProvider {
+    static var previews: some View {
+        SettingsView()
+            .environment(makeCoordinator())
+            .frame(width: 520, height: 360)
+            .previewDisplayName("Settings")
+    }
+
+    private static func makeCoordinator() -> AppCoordinator {
+        let coordinator = AppCoordinator()
+        coordinator.appState.recordingState = .idle
+        return coordinator
+    }
+}
+#endif
