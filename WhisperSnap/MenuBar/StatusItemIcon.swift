@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct StatusItemIcon: View {
@@ -6,11 +7,17 @@ struct StatusItemIcon: View {
     var body: some View {
         switch state {
         case .idle:
-            Image("Dock")
+            if let menuBarIcon {
+                Image(nsImage: menuBarIcon)
+            } else {
+                Image(systemName: "mic")
+            }
         case .recording:
-            Image(systemName: "mic.fill")
-                .symbolEffect(.variableColor.iterative.reversing)
-                .foregroundStyle(.red)
+            if let menuBarIcon {
+                Image(nsImage: menuBarIcon)
+            } else {
+                Image(systemName: "mic")
+            }
         case .processing:
             Image(systemName: "waveform")
                 .symbolEffect(.pulse)
@@ -21,5 +28,15 @@ struct StatusItemIcon: View {
             Image(systemName: "exclamationmark.triangle")
                 .foregroundStyle(.orange)
         }
+    }
+
+    private var menuBarIcon: NSImage? {
+        guard let source = NSImage(named: "Dock")?.copy() as? NSImage else {
+            return nil
+        }
+
+        source.size = NSSize(width: 18, height: 18)
+        source.isTemplate = true
+        return source
     }
 }

@@ -16,15 +16,17 @@ final class AppCoordinator {
     private let hud = RecordingHUDManager()
 
     private var modelContainer: ModelContainer?
+    private var hasSetup = false
 
     init() {}
 
     func setup(modelContainer: ModelContainer) {
+        guard !hasSetup else { return }
+        hasSetup = true
         self.modelContainer = modelContainer
         ShortcutManager.setup(coordinator: self)
         inserter.requestPermissionIfNeeded()
         modelManager.refreshDownloadedModels()
-        hud.update(recordingState: .idle)  // show thin idle bar immediately on launch
         Task { await preloadModel() }
     }
 

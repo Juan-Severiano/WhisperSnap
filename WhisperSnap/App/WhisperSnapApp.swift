@@ -16,17 +16,17 @@ struct WhisperSnapApp: App {
         sharedContainer = container
         let coord = AppCoordinator()
         _coordinator = State(wrappedValue: coord)
-        coord.setup(modelContainer: container)
+        DispatchQueue.main.async {
+            coord.setup(modelContainer: container)
+        }
     }
 
     var body: some Scene {
-        MenuBarExtra {
+        MenuBarExtra("WhisperSnap", image: "Dock") {
             MenuBarView()
                 .environment(coordinator)
-        } label: {
-            StatusItemIcon(state: coordinator.appState.recordingState)
         }
-        .menuBarExtraStyle(.window)
+        .menuBarExtraStyle(.menu)
 
         Settings {
             SettingsView()
@@ -38,5 +38,16 @@ struct WhisperSnapApp: App {
                 .modelContainer(sharedContainer)
         }
         .defaultSize(width: 600, height: 480)
+    }
+
+    private var primaryActionTitle: String {
+        switch coordinator.appState.recordingState {
+        case .idle, .done, .error:
+            "Start Recording"
+        case .recording:
+            "Stop Recording"
+        case .processing:
+            "Transcribing..."
+        }
     }
 }
