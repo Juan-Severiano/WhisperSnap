@@ -41,6 +41,11 @@ final class AppCoordinator {
         }
     }
 
+    func stopIfRecording() {
+        guard case .recording = appState.recordingState else { return }
+        Task { await stopAndTranscribe() }
+    }
+
     private func startRecording() async {
         do {
             try await audioCapture.startRecording()
@@ -78,11 +83,15 @@ final class AppCoordinator {
             setState(.done(text: finalText))
             deliverText(finalText)
 
+            // Always copy so the HUD can show "Copied" feedback
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(finalText, forType: .string)
+
             if !settings.privateMode {
                 saveRecord(text: finalText, originalText: originalText, duration: duration)
             }
 
-            scheduleReset(after: 1.5)
+            scheduleReset(after: 3.0)
         } catch {
             setState(.error(error.localizedDescription))
             scheduleReset(after: 4)

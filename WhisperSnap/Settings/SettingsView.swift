@@ -1,5 +1,4 @@
 import SwiftUI
-import KeyboardShortcuts
 
 struct SettingsView: View {
     @Environment(AppCoordinator.self) private var coordinator
@@ -57,7 +56,14 @@ private struct GeneralSettingsTab: View {
     var body: some View {
         Form {
             Section("Shortcut") {
-                KeyboardShortcuts.Recorder("Toggle Recording", name: .toggleRecording)
+                LabeledContent("Record") {
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("Double-tap ⌥ Option — start / stop")
+                        Text("Hold ⌥ Option — record while held")
+                    }
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                }
             }
 
             Section("Transcription") {

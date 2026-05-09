@@ -11,6 +11,9 @@ private final class PassThroughView: NSView {
     override var mouseDownCanMoveWindow: Bool { false }
 }
 
+private let panelWidth:  CGFloat = 320
+private let panelHeight: CGFloat = 120
+
 final class RecordingHUDManager {
     private var panel: NSPanel?
     private var hostingView: NSHostingView<AnyView>?
@@ -32,72 +35,69 @@ final class RecordingHUDManager {
     }
 
     func update(recordingState: RecordingState) {
-        state.recordingState = recordingState
-        showPanel()
-    }
-
-    private func showPanel() {
+        withAnimation(.bouncy) {
+            state.recordingState = recordingState
+        }
         if panel == nil {
-            let p = NSPanel(
-                contentRect: .zero,
-                styleMask: [.borderless, .fullSizeContentView],
-                backing: .buffered,
-                defer: false
-            )
-            p.becomesKeyOnlyIfNeeded = true
-            p.isFloatingPanel = true
-            p.hidesOnDeactivate = false
-            p.level = NSWindow.Level.floating
-            p.backgroundColor = NSColor.clear
-            p.isOpaque = false
-            p.hasShadow = false
-            p.collectionBehavior = NSWindow.CollectionBehavior([
-                .canJoinAllSpaces,
-                .stationary,
-                .ignoresCycle,
-                .fullScreenAuxiliary,
-            ])
-
-            let root = AnyView(RecordingHUDView().environment(state))
-            let hv = NSHostingView(rootView: root)
-            hv.sizingOptions = []
-
-            let container = PassThroughView()
-            container.addSubview(hv)
-            p.contentView = container
-            hostingView = hv
-            panel = p
+            createAndShowPanel()
+        } else {
+            panel?.orderFront(nil)
         }
-
-        reposition()
-        panel?.orderFront(nil)
     }
 
-    private func reposition() {
-        guard let panel, let screen = NSScreen.main else { return }
+    private func createAndShowPanel() {
+        let p = NSPanel(
+            contentRect: .zero,
+            styleMask: [.borderless, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        p.becomesKeyOnlyIfNeeded = true
+        p.isFloatingPanel = true
+        p.hidesOnDeactivate = false
+        p.level = NSWindow.Level.floating
+        p.backgroundColor = NSColor.clear
+        p.isOpaque = false
+        p.hasShadow = false
+        p.ignoresMouseEvents = true
+        p.collectionBehavior = NSWindow.CollectionBehavior([
+            .canJoinAllSpaces,
+            .stationary,
+            .ignoresCycle,
+            .fullScreenAuxiliary,
+        ])
 
-        let size: NSSize = switch state.recordingState {
-        case .recording, .processing: NSSize(width: 170, height: 44)
-        default:                      NSSize(width: 80,  height: 16)
-        }
+        let root = AnyView(RecordingHUDView().environment(state))
+        let hv = NSHostingView(rootView: root)
+        hv.sizingOptions = []
 
-        panel.setContentSize(size)
-        let rect = NSRect(origin: .zero, size: size)
-        hostingView?.frame = rect
-        panel.contentView?.frame = rect
+        let container = PassThroughView()
+        container.addSubview(hv)
+        p.contentView = container
+        hostingView = hv
+        panel = p
 
-        let x = screen.frame.midX - size.width / 2
-        let y = screen.frame.minY + 32
-        panel.setFrameOrigin(NSPoint(x: x, y: y))
+        positionPanel(p)
+        hv.frame = NSRect(origin: .zero, size: NSSize(width: panelWidth, height: panelHeight))
+        container.frame = hv.frame
+        p.orderFront(nil)
+    }
+
+    private func positionPanel(_ panel: NSPanel) {
+        guard let screen = NSScreen.main else { return }
+        let x = screen.frame.midX - panelWidth / 2
+        let y = screen.visibleFrame.maxY - panelHeight - 4
+        panel.setFrame(NSRect(x: x, y: y, width: panelWidth, height: panelHeight), display: false)
     }
 }
 
 private struct RecordingHUDView: View {
     @Environment(HUDState.self) private var hudState
+    @Namespace private var namespace
     @State private var elapsed: TimeInterval = 0
 
     var body: some View {
-        ZStack {
+        GlassEffectContainer(spacing: 0) {
             switch hudState.recordingState {
             case .recording:
                 HStack(spacing: 10) {
@@ -105,40 +105,61 @@ private struct RecordingHUDView: View {
                     Text(timeString(elapsed))
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
                         .monospacedDigit()
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Capsule().fill(.black.opacity(0.82)))
-                .transition(.scale(scale: 0.8).combined(with: .opacity))
+                .glassEffect(in: .capsule)
+                .glassEffectID("hud", in: namespace)
 
             case .processing:
                 HStack(spacing: 9) {
                     Image(systemName: "waveform")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.75))
+                        .font(.system(size: 13, weight: .medium))
                         .symbolEffect(.variableColor.iterative.reversing)
+                        .foregroundStyle(.primary)
                     Text("Transcribing…")
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Capsule().fill(.black.opacity(0.82)))
-                .transition(.scale(scale: 0.8).combined(with: .opacity))
+                .glassEffect(in: .capsule)
+                .glassEffectID("hud", in: namespace)
+
+            case .done(let text):
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(text)
+                        .font(.system(size: 12, weight: .regular, design: .rounded))
+                        .foregroundStyle(.primary)
+                        .lineLimit(3)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    HStack(spacing: 5) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.green)
+                        Text("Copied to clipboard")
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .frame(width: 300)
+                .glassEffect(in: .capsule)
+                .glassEffectID("hud", in: namespace)
 
             default:
-                // Thin idle bar — just a quiet signal that the app is alive.
-                Capsule()
-                    .fill(.white.opacity(0.25))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .transition(.scale(scale: 0.8).combined(with: .opacity))
+                Color.clear
+                    .frame(width: 76, height: 12)
+                    .glassEffect(.regular.tint(Color.primary.opacity(0.35)), in: .capsule)
+                    .glassEffectID("hud", in: namespace)
             }
         }
-        .animation(.spring(duration: 0.3), value: hudState.recordingState == .recording)
-        .padding(4)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .padding(.top, 4)
         .task(id: hudState.recordingState) {
             guard case .recording = hudState.recordingState else {
                 elapsed = 0
