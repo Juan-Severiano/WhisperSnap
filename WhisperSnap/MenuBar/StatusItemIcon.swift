@@ -6,7 +6,7 @@ struct StatusItemIcon: View {
     var body: some View {
         switch state {
         case .idle:
-            Image(systemName: "mic")
+            Image("Dock")
         case .recording:
             Image(systemName: "mic.fill")
                 .symbolEffect(.variableColor.iterative.reversing)
