@@ -12,6 +12,9 @@ struct MenuBarView: View {
                 Divider().padding(.horizontal, 8)
             }
             recordButton
+            if let notice = coordinator.appState.transientNotice {
+                noticeBanner(notice)
+            }
             Divider().padding(.horizontal, 8)
             lastResultSection
             Divider().padding(.horizontal, 8)
@@ -46,7 +49,11 @@ struct MenuBarView: View {
                     .fontWeight(.medium)
                 Spacer()
                 if case .recording = state {
-                    Text("⌥⌘R")
+                    Text("⌥ Hold")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if case .realtimeStreaming = state {
+                    Text("Realtime")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -59,6 +66,21 @@ struct MenuBarView: View {
         .buttonStyle(.plain)
         .padding(.horizontal, 8)
         .disabled(state == .processing)
+    }
+
+    private func noticeBanner(_ message: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "info.circle")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
     }
 
     @ViewBuilder
@@ -133,6 +155,8 @@ struct MenuBarView: View {
         switch state {
         case .idle: "Start Recording"
         case .recording: "Stop Recording"
+        case .realtimeConnecting: "Connecting Realtime…"
+        case .realtimeStreaming: "Stop Realtime"
         case .processing: "Transcribing…"
         case .done: "Start Recording"
         case .error: "Start Recording"
@@ -142,6 +166,7 @@ struct MenuBarView: View {
     private func recordButtonBackground(for state: RecordingState) -> Color {
         switch state {
         case .recording: Color.red.opacity(0.12)
+        case .realtimeConnecting, .realtimeStreaming: Color.green.opacity(0.12)
         case .processing: Color.blue.opacity(0.08)
         default: Color.secondary.opacity(0.08)
         }

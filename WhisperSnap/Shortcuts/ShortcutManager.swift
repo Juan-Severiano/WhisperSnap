@@ -1,4 +1,5 @@
 import AppKit
+import KeyboardShortcuts
 
 // Shortcut behaviour:
 //  • Double-tap Option  → toggle recording (start or stop)
@@ -26,10 +27,18 @@ enum ShortcutManager {
     private static var expireWorkItem:    DispatchWorkItem?
 
     private static var eventMonitor: Any?
+    private static var didRegisterRealtimeToggle = false
 
     // MARK: - Setup
 
     static func setup(coordinator: AppCoordinator) {
+        if !didRegisterRealtimeToggle {
+            didRegisterRealtimeToggle = true
+            KeyboardShortcuts.onKeyUp(for: .toggleRealtimeMode) { [weak coordinator] in
+                coordinator?.toggleRealtimeMode()
+            }
+        }
+
         eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { event in
             let optionNow = event.modifierFlags.contains(.option)
 

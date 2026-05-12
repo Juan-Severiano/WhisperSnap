@@ -18,6 +18,12 @@ struct StatusItemIcon: View {
             } else {
                 Image(systemName: "mic")
             }
+        case .realtimeConnecting:
+            Image(systemName: "dot.radiowaves.left.and.right")
+                .symbolEffect(.pulse)
+        case .realtimeStreaming:
+            Image(systemName: "waveform.and.mic")
+                .symbolEffect(.variableColor.iterative.reversing)
         case .processing:
             Image(systemName: "waveform")
                 .symbolEffect(.pulse)

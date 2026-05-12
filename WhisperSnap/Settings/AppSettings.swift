@@ -3,13 +3,61 @@ import Security
 import ServiceManagement
 import SwiftUI
 
+enum OnlineTranscriptionPreset: String, CaseIterable {
+    case realtimeWhisper
+    case gpt4oTranscribe
+    case gpt4oMiniTranscribe
+    case custom
+
+    var displayName: String {
+        switch self {
+        case .realtimeWhisper: "gpt-realtime-whisper"
+        case .gpt4oTranscribe: "gpt-4o-transcribe"
+        case .gpt4oMiniTranscribe: "gpt-4o-mini-transcribe"
+        case .custom: "Custom"
+        }
+    }
+
+    var modelID: String? {
+        switch self {
+        case .realtimeWhisper: "gpt-realtime-whisper"
+        case .gpt4oTranscribe: "gpt-4o-transcribe"
+        case .gpt4oMiniTranscribe: "gpt-4o-mini-transcribe"
+        case .custom: nil
+        }
+    }
+}
+
+enum RealtimeBackend: String, CaseIterable {
+    case local
+    case remote
+
+    var displayName: String {
+        switch self {
+        case .local: "Local (WhisperKit)"
+        case .remote: "Remote (OpenAI Realtime)"
+        }
+    }
+}
+
 @Observable
 final class AppSettings {
     private static let keychainService = "com.juansev.WhisperSnap"
     private static let openAIKeyAccount = "openai-api-key"
 
-    var activeModel: String = UserDefaults.standard.string(forKey: "activeModel") ?? "openai_whisper-tiny" {
-        didSet { UserDefaults.standard.set(activeModel, forKey: "activeModel") }
+    var activeModel: String = {
+        let stored = UserDefaults.standard.string(forKey: "activeModel") ?? "openai_whisper-small"
+        if WhisperModelStorage.preferredLocalModelIDs.contains(stored) {
+            return stored
+        }
+        return "openai_whisper-small"
+    }() {
+        didSet {
+            if !WhisperModelStorage.preferredLocalModelIDs.contains(activeModel) {
+                activeModel = "openai_whisper-small"
+            }
+            UserDefaults.standard.set(activeModel, forKey: "activeModel")
+        }
     }
 
     var enableSanitization: Bool = UserDefaults.standard.bool(forKey: "enableSanitization") {
@@ -36,11 +84,44 @@ final class AppSettings {
         didSet { UserDefaults.standard.set(selectedLanguage, forKey: "selectedLanguage") }
     }
 
+    var realtimeEnabled: Bool = UserDefaults.standard.bool(forKey: "realtimeEnabled") {
+        didSet { UserDefaults.standard.set(realtimeEnabled, forKey: "realtimeEnabled") }
+    }
+
+    var realtimeBackend: RealtimeBackend = {
+        let raw = UserDefaults.standard.string(forKey: "realtimeBackend") ?? RealtimeBackend.local.rawValue
+        return RealtimeBackend(rawValue: raw) ?? .local
+    }() {
+        didSet { UserDefaults.standard.set(realtimeBackend.rawValue, forKey: "realtimeBackend") }
+    }
+
+    var onlineBaseURL: String = UserDefaults.standard.string(forKey: "onlineBaseURL") ?? "https://api.openai.com" {
+        didSet { UserDefaults.standard.set(onlineBaseURL, forKey: "onlineBaseURL") }
+    }
+
+    var onlineModelPreset: OnlineTranscriptionPreset = {
+        let raw = UserDefaults.standard.string(forKey: "onlineModelPreset") ?? OnlineTranscriptionPreset.realtimeWhisper.rawValue
+        return OnlineTranscriptionPreset(rawValue: raw) ?? .realtimeWhisper
+    }() {
+        didSet { UserDefaults.standard.set(onlineModelPreset.rawValue, forKey: "onlineModelPreset") }
+    }
+
+    var onlineCustomModelID: String = UserDefaults.standard.string(forKey: "onlineCustomModelID") ?? "" {
+        didSet { UserDefaults.standard.set(onlineCustomModelID, forKey: "onlineCustomModelID") }
+    }
+
     var sanitizationMode: SanitizationMode = {
         let raw = UserDefaults.standard.string(forKey: "sanitizationMode") ?? SanitizationMode.clean.rawValue
         return SanitizationMode(rawValue: raw) ?? .clean
     }() {
         didSet { UserDefaults.standard.set(sanitizationMode.rawValue, forKey: "sanitizationMode") }
+    }
+
+    var activeOnlineModelID: String {
+        if let presetModel = onlineModelPreset.modelID {
+            return presetModel
+        }
+        return onlineCustomModelID.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     var launchAtLogin: Bool {

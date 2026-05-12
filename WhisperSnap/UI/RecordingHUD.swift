@@ -112,6 +112,47 @@ private struct RecordingHUDView: View {
                 .glassEffect(in: .capsule)
                 .glassEffectID("hud", in: namespace)
 
+            case .realtimeConnecting:
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack(spacing: 8) {
+                        RealtimeBadgeLogo()
+                        Spacer()
+                        Text(timeString(elapsed))
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .monospacedDigit()
+                    }
+                    Text("Connecting realtime transcription…")
+                        .font(.system(size: 12, weight: .regular, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 11)
+                .frame(width: 320)
+                .glassEffect(in: .capsule)
+                .glassEffectID("hud", in: namespace)
+
+            case .realtimeStreaming(let partialText):
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack(spacing: 8) {
+                        RealtimeBadgeLogo()
+                        Spacer()
+                        Text(timeString(elapsed))
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .monospacedDigit()
+                    }
+                    Text(partialText.isEmpty ? "Listening…" : partialText)
+                        .font(.system(size: 12, weight: .regular, design: .rounded))
+                        .foregroundStyle(.primary)
+                        .lineLimit(3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 11)
+                .frame(width: 320)
+                .glassEffect(in: .capsule)
+                .glassEffectID("hud", in: namespace)
+
             case .processing:
                 HStack(spacing: 9) {
                     Image(systemName: "waveform")
@@ -161,7 +202,10 @@ private struct RecordingHUDView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .padding(.top, 4)
         .task(id: hudState.recordingState) {
-            guard case .recording = hudState.recordingState else {
+            switch hudState.recordingState {
+            case .recording, .realtimeConnecting, .realtimeStreaming:
+                break
+            default:
                 elapsed = 0
                 return
             }
@@ -176,6 +220,16 @@ private struct RecordingHUDView: View {
     private func timeString(_ seconds: TimeInterval) -> String {
         let s = Int(seconds)
         return String(format: "%d:%02d", s / 60, s % 60)
+    }
+}
+
+private struct RealtimeBadgeLogo: View {
+    var body: some View {
+        Image("Dock")
+            .resizable()
+            .interpolation(.high)
+            .frame(width: 14, height: 14)
+            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
     }
 }
 

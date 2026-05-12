@@ -1,4 +1,5 @@
 import AppKit
+import KeyboardShortcuts
 import SwiftUI
 
 struct SettingsView: View {
@@ -23,7 +24,7 @@ struct SettingsView: View {
                 AboutTab()
             }
         }
-        .frame(width: 520, height: 360)
+        .frame(width: 700, height: 500)
     }
 }
 
@@ -56,8 +57,8 @@ private struct GeneralSettingsTab: View {
 
     var body: some View {
         Form {
-            Section("Shortcut") {
-                LabeledContent("Record") {
+            Section("Shortcuts") {
+                LabeledContent("Recording") {
                     VStack(alignment: .trailing, spacing: 2) {
                         Text("Double-tap ⌥ Option — start / stop")
                         Text("Hold ⌥ Option — record while held")
@@ -65,6 +66,26 @@ private struct GeneralSettingsTab: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                 }
+
+                LabeledContent("Toggle Realtime") {
+                    KeyboardShortcuts.Recorder(for: .toggleRealtimeMode)
+                }
+
+                Text("Default realtime shortcut: ⌃⌥R")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Realtime") {
+                Toggle("Enable realtime mode", isOn: $settings.realtimeEnabled)
+                Picker("Realtime engine", selection: $settings.realtimeBackend) {
+                    ForEach(RealtimeBackend.allCases, id: \.self) { backend in
+                        Text(backend.displayName).tag(backend)
+                    }
+                }
+                Text("Default is Local. Use Remote only when you want OpenAI realtime streaming.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Transcription") {
@@ -97,34 +118,40 @@ private struct GeneralSettingsTab: View {
 
 // MARK: - Models
 
+private enum ModelsSubtab: String, CaseIterable, Identifiable {
+    case local = "Local"
+    case online = "Online"
+
+    var id: String { rawValue }
+}
+
 private struct ModelsSettingsTab: View {
     @Bindable var modelManager: ModelManager
     @Bindable var settings: AppSettings
     var coordinator: AppCoordinator
 
+    @State private var selectedSubtab: ModelsSubtab = .local
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            List(modelManager.listedModels) { model in
-                ModelRow(
-                    model: model,
-                    isActive: settings.activeModel == model.id,
-                    isDownloaded: modelManager.isDownloaded(model.id),
-                    isDownloading: modelManager.isDownloading[model.id] ?? false,
-                    progress: modelManager.downloadProgress[model.id] ?? 0,
-                    onSelect: {
-                        settings.activeModel = model.id
-                        Task { await coordinator.reloadModel() }
-                    },
-                    onDownload: {
-                        Task { try? await modelManager.download(model.id) }
-                    },
-                    onDelete: {
-                        try? modelManager.delete(model.id)
-                    }
-                )
+        VStack(alignment: .leading, spacing: 12) {
+            Picker("", selection: $selectedSubtab) {
+                ForEach(ModelsSubtab.allCases) { tab in
+                    Text(tab.rawValue).tag(tab)
+                }
             }
-            .listStyle(.inset)
+            .pickerStyle(.segmented)
+
+            Group {
+                switch selectedSubtab {
+                case .local:
+                    LocalModelsTab(modelManager: modelManager, settings: settings, coordinator: coordinator)
+                case .online:
+                    OnlineModelsTab(settings: settings)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .padding()
         .onAppear {
             modelManager.refreshDownloadedModels()
             Task { await modelManager.fetchAvailableModels() }
@@ -132,57 +159,277 @@ private struct ModelsSettingsTab: View {
     }
 }
 
-private struct ModelRow: View {
+private struct LocalModelsTab: View {
+    @Bindable var modelManager: ModelManager
+    @Bindable var settings: AppSettings
+    var coordinator: AppCoordinator
+
+    var body: some View {
+        List(modelManager.listedModels) { model in
+            LocalModelRow(
+                model: model,
+                isActive: settings.activeModel == model.id,
+                isDownloaded: modelManager.isDownloaded(model.id),
+                isDownloading: modelManager.isDownloading[model.id] ?? false,
+                progress: modelManager.downloadProgress[model.id],
+                onDiskSize: modelManager.formattedOnDiskSize(for: model.id),
+                installPath: modelManager.modelInstallPath(for: model.id),
+                errorMessage: modelManager.downloadErrors[model.id],
+                onSelect: {
+                    settings.activeModel = model.id
+                    Task { await coordinator.reloadModel() }
+                },
+                onDownload: {
+                    modelManager.clearError(for: model.id)
+                    Task {
+                        do {
+                            try await modelManager.download(model.id)
+                        } catch {
+                            // Error is already stored in modelManager.downloadErrors.
+                        }
+                    }
+                },
+                onDelete: {
+                    do {
+                        try modelManager.delete(model.id)
+                    } catch {
+                        modelManager.downloadErrors[model.id] = error.localizedDescription
+                    }
+                }
+            )
+            .listRowInsets(EdgeInsets(top: 8, leading: 10, bottom: 8, trailing: 10))
+        }
+        .listStyle(.inset)
+    }
+}
+
+private struct LocalModelRow: View {
     let model: WhisperModelInfo
     let isActive: Bool
     let isDownloaded: Bool
     let isDownloading: Bool
-    let progress: Double
+    let progress: ModelDownloadProgress?
+    let onDiskSize: String?
+    let installPath: String
+    let errorMessage: String?
     let onSelect: () -> Void
     let onDownload: () -> Void
     let onDelete: () -> Void
 
+    private let byteFormatter: ByteCountFormatter = {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useKB, .useMB, .useGB]
+        formatter.countStyle = .file
+        return formatter
+    }()
+
+    private var progressLine: String {
+        guard let progress else { return "" }
+
+        let downloaded = byteFormatter.string(fromByteCount: max(progress.downloadedBytes, 0))
+        let total = progress.totalBytes > 0
+            ? byteFormatter.string(fromByteCount: progress.totalBytes)
+            : "Unknown"
+        let speedValue = Int64(max(progress.speedBytesPerSecond, 0).rounded())
+        let speed = byteFormatter.string(fromByteCount: speedValue)
+        let percent = Int((progress.fraction * 100).rounded())
+
+        return "\(downloaded) / \(total) • \(speed)/s • \(percent)%"
+    }
+
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(model.displayName)
-                        .fontWeight(isActive ? .semibold : .regular)
-                    if isActive {
-                        Text("Active")
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(model.displayName)
+                            .fontWeight(isActive ? .semibold : .regular)
+
+                        if isActive {
+                            Text("Active")
+                                .font(.caption)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.accentColor.opacity(0.15))
+                                .clipShape(Capsule())
+                        }
+
+                        if isDownloaded {
+                            Text("Downloaded")
+                                .font(.caption)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.green.opacity(0.15))
+                                .clipShape(Capsule())
+                        }
+                    }
+
+                    Text("Model ID: \(model.id)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Text("Remote size: \(model.sizeDescription)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    if let onDiskSize {
+                        Text("On disk: \(onDiskSize)")
                             .font(.caption)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.accentColor.opacity(0.15))
-                            .foregroundStyle(.bar)
-                            .clipShape(Capsule())
+                            .foregroundStyle(.secondary)
                     }
                 }
-                Text(model.sizeDescription)
+
+                Spacer()
+
+                if isDownloading {
+                    EmptyView()
+                } else if isDownloaded {
+                    HStack(spacing: 8) {
+                        if !isActive {
+                            Button("Use", action: onSelect)
+                                .controlSize(.small)
+                        }
+                        Button("Delete", role: .destructive, action: onDelete)
+                            .controlSize(.small)
+                    }
+                } else {
+                    Button("Download", action: onDownload)
+                        .controlSize(.small)
+                }
+            }
+
+            if isDownloading, let progress {
+                VStack(alignment: .leading, spacing: 4) {
+                    ProgressView(value: progress.fraction)
+                        .progressViewStyle(.linear)
+                    Text(progressLine)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(progress.destinationPath)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .textSelection(.enabled)
+                }
+            } else if isDownloaded {
+                Text(installPath)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .textSelection(.enabled)
+            }
+
+            if let errorMessage, !errorMessage.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+        }
+    }
+}
+
+private struct OnlineModelsTab: View {
+    @Bindable var settings: AppSettings
+
+    var body: some View {
+        Form {
+            Section("Endpoint") {
+                TextField("https://api.openai.com", text: $settings.onlineBaseURL)
+                    .textFieldStyle(.roundedBorder)
+                    .autocorrectionDisabled()
+
+                Text("Used only when Realtime engine is set to Remote.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
-            Spacer()
-
-            if isDownloading {
-                ProgressView()
-                    .controlSize(.small)
-            } else if isDownloaded {
-                HStack(spacing: 8) {
-                    if !isActive {
-                        Button("Use", action: onSelect)
-                            .controlSize(.small)
+            Section("Model") {
+                Picker("Preset", selection: $settings.onlineModelPreset) {
+                    ForEach(OnlineTranscriptionPreset.allCases, id: \.self) { preset in
+                        Text(preset.displayName).tag(preset)
                     }
-                    Button("Delete", role: .destructive, action: onDelete)
-                        .controlSize(.small)
                 }
-            } else {
-                Button("Download", action: onDownload)
-                    .controlSize(.small)
+
+                if settings.onlineModelPreset == .custom {
+                    TextField("Custom model ID", text: $settings.onlineCustomModelID)
+                        .textFieldStyle(.roundedBorder)
+                        .autocorrectionDisabled()
+                }
+
+                Text("Active model: \(settings.activeOnlineModelID.isEmpty ? "(empty)" : settings.activeOnlineModelID)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("For websocket realtime, prefer `gpt-realtime-whisper`.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
+
+            SharedOpenAIKeySection(settings: settings, title: "OpenAI API Key")
         }
-        .padding(.vertical, 4)
+        .formStyle(.grouped)
+    }
+}
+
+// MARK: - Shared Key Section
+
+private struct SharedOpenAIKeySection: View {
+    @Bindable var settings: AppSettings
+    let title: String
+
+    @State private var apiKeyInput: String = ""
+    @State private var isSaved = false
+    @State private var showKey = false
+
+    var body: some View {
+        Section(title) {
+            HStack {
+                if showKey {
+                    TextField("sk-…", text: $apiKeyInput)
+                } else {
+                    SecureField("sk-…", text: $apiKeyInput)
+                }
+
+                Button(showKey ? "Hide" : "Show") {
+                    showKey.toggle()
+                }
+                .buttonStyle(.borderless)
+            }
+
+            HStack {
+                Button("Save Key") {
+                    try? settings.saveOpenAIKey(apiKeyInput)
+                    isSaved = true
+                    Task {
+                        try? await Task.sleep(for: .seconds(1.5))
+                        isSaved = false
+                    }
+                }
+                .disabled(apiKeyInput.isEmpty)
+
+                if isSaved {
+                    Label("Saved", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                        .font(.caption)
+                }
+
+                Spacer()
+
+                Button("Remove Key", role: .destructive) {
+                    try? settings.deleteOpenAIKey()
+                    apiKeyInput = ""
+                }
+            }
+
+            Text("This key is shared with AI Cleanup and stored in macOS Keychain.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .onAppear {
+            apiKeyInput = (try? settings.loadOpenAIKey()) ?? ""
+        }
     }
 }
 
@@ -190,9 +437,6 @@ private struct ModelRow: View {
 
 private struct AISettingsTab: View {
     @Bindable var settings: AppSettings
-    @State private var apiKeyInput: String = ""
-    @State private var isSaved = false
-    @State private var showKey = false
 
     var body: some View {
         Form {
@@ -211,53 +455,11 @@ private struct AISettingsTab: View {
                     .pickerStyle(.radioGroup)
                 }
 
-                Section("OpenAI API Key") {
-                    HStack {
-                        if showKey {
-                            TextField("sk-…", text: $apiKeyInput)
-                        } else {
-                            SecureField("sk-…", text: $apiKeyInput)
-                        }
-                        Button(showKey ? "Hide" : "Show") { showKey.toggle() }
-                            .buttonStyle(.borderless)
-                    }
-
-                    HStack {
-                        Button("Save Key") {
-                            try? settings.saveOpenAIKey(apiKeyInput)
-                            isSaved = true
-                            Task {
-                                try? await Task.sleep(for: .seconds(1.5))
-                                isSaved = false
-                            }
-                        }
-                        .disabled(apiKeyInput.isEmpty)
-
-                        if isSaved {
-                            Label("Saved", systemImage: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                                .font(.caption)
-                        }
-
-                        Spacer()
-
-                        Button("Remove Key", role: .destructive) {
-                            try? settings.deleteOpenAIKey()
-                            apiKeyInput = ""
-                        }
-                    }
-
-                    Text("Your API key is stored securely in the macOS Keychain.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                SharedOpenAIKeySection(settings: settings, title: "OpenAI API Key")
             }
         }
         .formStyle(.grouped)
         .padding()
-        .onAppear {
-            apiKeyInput = (try? settings.loadOpenAIKey()) ?? ""
-        }
     }
 }
 
@@ -302,7 +504,7 @@ struct SettingsView_Previews: PreviewProvider {
     static var previews: some View {
         SettingsView()
             .environment(makeCoordinator())
-            .frame(width: 520, height: 360)
+            .frame(width: 700, height: 500)
             .previewDisplayName("Settings")
     }
 

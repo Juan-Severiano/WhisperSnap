@@ -42,8 +42,29 @@ actor AudioCaptureManager {
     private var buffer = AudioFloatBuffer()
 
     static let targetSampleRate: Double = 16_000
+    static let realtimeSampleRate: Double = 24_000
 
     func startRecording() async throws {
+        try await startEngine(
+            targetSampleRate: Self.targetSampleRate,
+            accumulate: true,
+            onChunk: nil
+        )
+    }
+
+    func startRealtimeStreaming(onChunk: @escaping @Sendable ([Float]) -> Void) async throws {
+        try await startEngine(
+            targetSampleRate: Self.realtimeSampleRate,
+            accumulate: false,
+            onChunk: onChunk
+        )
+    }
+
+    private func startEngine(
+        targetSampleRate: Double,
+        accumulate: Bool,
+        onChunk: (@Sendable ([Float]) -> Void)?
+    ) async throws {
         let granted = await AVAudioApplication.requestRecordPermission()
         guard granted else { throw AudioCaptureError.permissionDenied }
 
@@ -53,7 +74,7 @@ actor AudioCaptureManager {
 
         guard let targetFormat = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
-            sampleRate: Self.targetSampleRate,
+            sampleRate: targetSampleRate,
             channels: 1,
             interleaved: false
         ), let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
@@ -64,7 +85,7 @@ actor AudioCaptureManager {
         let buf = self.buffer
 
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { pcmBuffer, _ in
-            let ratio = Self.targetSampleRate / inputFormat.sampleRate
+            let ratio = targetSampleRate / inputFormat.sampleRate
             let outFrames = AVAudioFrameCount(Double(pcmBuffer.frameLength) * ratio + 1)
             guard let outBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outFrames) else { return }
 
@@ -82,7 +103,10 @@ actor AudioCaptureManager {
 
             guard let channelData = outBuffer.floatChannelData else { return }
             let floats = Array(UnsafeBufferPointer(start: channelData[0], count: Int(outBuffer.frameLength)))
-            buf.append(floats)
+            if accumulate {
+                buf.append(floats)
+            }
+            onChunk?(floats)
         }
 
         do {
@@ -99,5 +123,11 @@ actor AudioCaptureManager {
         audioEngine?.stop()
         audioEngine = nil
         return buffer.drain()
+    }
+
+    func stopRealtimeStreaming() {
+        audioEngine?.inputNode.removeTap(onBus: 0)
+        audioEngine?.stop()
+        audioEngine = nil
     }
 }
