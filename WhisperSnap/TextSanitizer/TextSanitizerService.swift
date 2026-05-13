@@ -5,7 +5,7 @@ enum SanitizationMode: String, CaseIterable {
     case organize
     case bullets
 
-    var displayName: String {
+    nonisolated var displayName: String {
         switch self {
         case .clean: "Clean up filler words"
         case .organize: "Organize into paragraphs"
@@ -13,7 +13,7 @@ enum SanitizationMode: String, CaseIterable {
         }
     }
 
-    var systemPrompt: String {
+    nonisolated var systemPrompt: String {
         switch self {
         case .clean:
             "Fix punctuation, capitalization, and remove filler words (um, uh, like, you know) from the voice transcription. Keep all meaning intact. Return only the cleaned text, no commentary."

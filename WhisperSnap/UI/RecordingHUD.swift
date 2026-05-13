@@ -135,115 +135,122 @@ private struct RecordingHUDView: View {
     private let ticker = Timer.publish(every: 0.25, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        GlassEffectContainer(spacing: 0) {
-            switch hudState.recordingState {
-            case .recording:
-                HStack(spacing: 10) {
-                    WaveformBars()
-                    Text(timeString(elapsedSeconds))
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(.primary)
+        Group {
+            if #available(macOS 26.0, *) {
+                GlassEffectContainer(spacing: 0) {
+                    hudContent
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .glassEffect(in: .capsule)
-                .glassEffectID("hud", in: namespace)
-
-            case .realtimeConnecting:
-                VStack(alignment: .leading, spacing: 7) {
-                    HStack(spacing: 8) {
-                        RealtimeBadgeLogo()
-                        Text(timeString(elapsedSeconds))
-                            .font(.system(size: 13, weight: .semibold, design: .rounded))
-                            .monospacedDigit()
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                    }
-                    Text("Connecting realtime transcription…")
-                        .font(.system(size: 12, weight: .regular, design: .rounded))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+            } else {
+                ZStack {
+                    hudContent
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 11)
-                .frame(width: 320)
-                .glassEffect(in: .capsule)
-                .glassEffectID("hud", in: namespace)
-
-            case .realtimeStreaming(let partialText):
-                VStack(alignment: .leading, spacing: 7) {
-                    HStack(spacing: 8) {
-                        RealtimeBadgeLogo()
-                        Text(timeString(elapsedSeconds))
-                            .font(.system(size: 13, weight: .semibold, design: .rounded))
-                            .monospacedDigit()
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                    }
-                    Text(partialText.isEmpty ? "Listening…" : realtimeTailText(from: partialText))
-                        .font(.system(size: 12, weight: .regular, design: .rounded))
-                        .foregroundStyle(.primary)
-                        .lineLimit(3)
-                        .truncationMode(.head)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 11)
-                .frame(width: 320)
-                .glassEffect(in: .capsule)
-                .glassEffectID("hud", in: namespace)
-
-            case .processing:
-                HStack(spacing: 9) {
-                    Image(systemName: "waveform")
-                        .font(.system(size: 13, weight: .medium))
-                        .symbolEffect(.variableColor.iterative.reversing)
-                        .foregroundStyle(.primary)
-                    Text("Transcribing…")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.primary)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .glassEffect(in: .capsule)
-                .glassEffectID("hud", in: namespace)
-
-            case .done(let text):
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(text)
-                        .font(.system(size: 12, weight: .regular, design: .rounded))
-                        .foregroundStyle(.primary)
-                        .lineLimit(3)
-                        .multilineTextAlignment(.leading)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                    HStack(spacing: 5) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.green)
-                        Text("Copied to clipboard")
-                            .font(.system(size: 11, weight: .medium, design: .rounded))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .frame(width: 300)
-                .glassEffect(in: .capsule)
-                .glassEffectID("hud", in: namespace)
-
-            default:
-                Color.clear
-                    .frame(width: 76, height: 12)
-                    .glassEffect(.regular.tint(Color.primary.opacity(0.35)), in: .capsule)
-                    .glassEffectID("hud", in: namespace)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .padding(.top, topPadding)
         .onReceive(ticker) { tick in
             now = tick
+        }
+    }
+
+    @ViewBuilder
+    private var hudContent: some View {
+        switch hudState.recordingState {
+        case .recording:
+            HStack(spacing: 10) {
+                WaveformBars()
+                Text(timeString(elapsedSeconds))
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(.primary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .hudCapsuleStyle(namespace: namespace)
+
+        case .realtimeConnecting:
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 8) {
+                    RealtimeBadgeLogo()
+                    Text(timeString(elapsedSeconds))
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                Text("Connecting realtime transcription…")
+                    .font(.system(size: 12, weight: .regular, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 11)
+            .frame(width: 320)
+            .hudCapsuleStyle(namespace: namespace)
+
+        case .realtimeStreaming(let partialText):
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 8) {
+                    RealtimeBadgeLogo()
+                    Text(timeString(elapsedSeconds))
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                Text(partialText.isEmpty ? "Listening…" : realtimeTailText(from: partialText))
+                    .font(.system(size: 12, weight: .regular, design: .rounded))
+                    .foregroundStyle(.primary)
+                    .lineLimit(3)
+                    .truncationMode(.head)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 11)
+            .frame(width: 320)
+            .hudCapsuleStyle(namespace: namespace)
+
+        case .processing:
+            HStack(spacing: 9) {
+                Image(systemName: "waveform")
+                    .font(.system(size: 13, weight: .medium))
+                    .symbolEffect(.variableColor.iterative.reversing)
+                    .foregroundStyle(.primary)
+                Text("Transcribing…")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.primary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .hudCapsuleStyle(namespace: namespace)
+
+        case .done(let text):
+            VStack(alignment: .leading, spacing: 8) {
+                Text(text)
+                    .font(.system(size: 12, weight: .regular, design: .rounded))
+                    .foregroundStyle(.primary)
+                    .lineLimit(3)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                HStack(spacing: 5) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.green)
+                    Text("Copied to clipboard")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(width: 300)
+            .hudCapsuleStyle(namespace: namespace)
+
+        default:
+            Color.clear
+                .frame(width: 76, height: 12)
+                .hudCapsuleStyle(namespace: namespace, tinted: true)
         }
     }
 
@@ -273,6 +280,34 @@ private struct RecordingHUDView: View {
     private func timeString(_ seconds: TimeInterval) -> String {
         let s = Int(seconds)
         return String(format: "%d:%02d", s / 60, s % 60)
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func hudCapsuleStyle(namespace: Namespace.ID, tinted: Bool = false) -> some View {
+        if #available(macOS 26.0, *) {
+            if tinted {
+                self
+                    .glassEffect(.regular.tint(Color.primary.opacity(0.35)), in: .capsule)
+                    .glassEffectID("hud", in: namespace)
+            } else {
+                self
+                    .glassEffect(in: .capsule)
+                    .glassEffectID("hud", in: namespace)
+            }
+        } else {
+            self
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(.ultraThinMaterial)
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.8)
+                )
+                .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
+        }
     }
 }
 
