@@ -14,6 +14,10 @@ enum TranscriptionError: LocalizedError {
 }
 
 actor WhisperEngineManager {
+    nonisolated private static let whisperSpecialTokenRegex = try! NSRegularExpression(pattern: #"<\|[^|>]+\|>"#)
+    nonisolated private static let repeatedWhitespaceRegex = try! NSRegularExpression(pattern: #"\s+"#)
+    nonisolated private static let spaceBeforePunctuationRegex = try! NSRegularExpression(pattern: #"\s+([,.;:!?])"#)
+
     private var whisperKit: WhisperKit?
     private(set) var isLoaded = false
     private(set) var loadedModelName: String?
@@ -49,11 +53,11 @@ actor WhisperEngineManager {
         let options = DecodingOptions(language: language)
         let results = try await kit.transcribe(audioArray: audioArray, decodeOptions: options)
         let text = results
-            .compactMap { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .map { Self.cleanTranscriptionArtifacts($0.text) }
             .filter { !$0.isEmpty }
             .joined(separator: " ")
 
-        return text
+        return Self.cleanTranscriptionArtifacts(text)
     }
 
     func startLocalRealtimeTranscription(
@@ -102,18 +106,50 @@ actor WhisperEngineManager {
     }
 
     nonisolated private static func mergeRealtimeStateText(_ state: AudioStreamTranscriber.State) -> String {
-        let confirmed = state.confirmedSegments.map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
-        let unconfirmed = state.unconfirmedSegments.map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
+        let confirmed = state.confirmedSegments.map { Self.cleanTranscriptionArtifacts($0.text) }
+        let unconfirmed = state.unconfirmedSegments.map { Self.cleanTranscriptionArtifacts($0.text) }
         let segments = (confirmed + unconfirmed).filter { !$0.isEmpty }.joined(separator: " ")
 
         if !segments.isEmpty {
             return segments
         }
 
-        let current = state.currentText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let current = Self.cleanTranscriptionArtifacts(state.currentText)
         if current == "Waiting for speech..." {
             return ""
         }
         return current
+    }
+
+    nonisolated static func cleanTranscriptionArtifacts(_ rawText: String) -> String {
+        var cleaned = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return "" }
+
+        cleaned = replaceMatches(
+            in: cleaned,
+            using: whisperSpecialTokenRegex,
+            replacement: " "
+        )
+        cleaned = replaceMatches(
+            in: cleaned,
+            using: repeatedWhitespaceRegex,
+            replacement: " "
+        )
+        cleaned = replaceMatches(
+            in: cleaned,
+            using: spaceBeforePunctuationRegex,
+            replacement: "$1"
+        )
+
+        return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    nonisolated private static func replaceMatches(
+        in text: String,
+        using regex: NSRegularExpression,
+        replacement: String
+    ) -> String {
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        return regex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: replacement)
     }
 }

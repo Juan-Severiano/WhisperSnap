@@ -143,8 +143,10 @@ final class AppCoordinator {
                 onPartial: { [weak self] text in
                     DispatchQueue.main.async {
                         guard let self else { return }
-                        self.localRealtimeLatestText = text
-                        self.setState(.realtimeStreaming(partialText: text))
+                        let cleaned = WhisperEngineManager.cleanTranscriptionArtifacts(text)
+                        guard !cleaned.isEmpty else { return }
+                        self.localRealtimeLatestText = cleaned
+                        self.setState(.realtimeStreaming(partialText: cleaned))
                     }
                 },
                 onFailure: { [weak self] message in
@@ -282,28 +284,29 @@ final class AppCoordinator {
         try? await Task.sleep(for: .milliseconds(300))
         realtimeService.disconnect()
 
-        let rawText = combinedRealtimeText().trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawText = WhisperEngineManager.cleanTranscriptionArtifacts(combinedRealtimeText())
         await finalizeRealtimeText(rawText, modelUsed: settings.activeOnlineModelID)
     }
 
     private func stopLocalRealtimeAndFinalize() async {
         setState(.processing)
         await whisperEngine.stopLocalRealtimeTranscription()
-        let rawText = localRealtimeLatestText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawText = WhisperEngineManager.cleanTranscriptionArtifacts(localRealtimeLatestText)
         await finalizeRealtimeText(rawText, modelUsed: settings.activeModel)
     }
 
     private func finalizeRealtimeText(_ rawText: String, modelUsed: String) async {
+        let normalizedRawText = WhisperEngineManager.cleanTranscriptionArtifacts(rawText)
         let startTime = realtimeStartedAt
         resetRealtimeBuffers()
         activeRealtimeSession = nil
 
-        guard !rawText.isEmpty else {
+        guard !normalizedRawText.isEmpty else {
             setState(.idle)
             return
         }
 
-        let (finalText, originalText) = await applySanitizationIfEnabled(rawText)
+        let (finalText, originalText) = await applySanitizationIfEnabled(normalizedRawText)
         let duration = startTime.map { Date().timeIntervalSince($0) } ?? 0
 
         setState(.done(text: finalText))
@@ -433,7 +436,7 @@ final class AppCoordinator {
 
         case .completed(let transcript):
             guard isRealtimeState else { return }
-            let normalized = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+            let normalized = WhisperEngineManager.cleanTranscriptionArtifacts(transcript)
             if normalized.isEmpty {
                 if !realtimeDraftText.isEmpty {
                     appendRealtimeCommittedSegment(realtimeDraftText)
@@ -472,7 +475,7 @@ final class AppCoordinator {
     }
 
     private func appendRealtimeCommittedSegment(_ segment: String) {
-        let trimmed = segment.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = WhisperEngineManager.cleanTranscriptionArtifacts(segment)
         guard !trimmed.isEmpty else { return }
 
         if realtimeCommittedText.isEmpty {
@@ -483,13 +486,16 @@ final class AppCoordinator {
     }
 
     private func combinedRealtimeText() -> String {
+        let combined: String
         if realtimeCommittedText.isEmpty {
-            return realtimeDraftText
+            combined = realtimeDraftText
+        } else if realtimeDraftText.isEmpty {
+            combined = realtimeCommittedText
+        } else {
+            combined = realtimeCommittedText + " " + realtimeDraftText
         }
-        if realtimeDraftText.isEmpty {
-            return realtimeCommittedText
-        }
-        return realtimeCommittedText + " " + realtimeDraftText
+
+        return WhisperEngineManager.cleanTranscriptionArtifacts(combined)
     }
 
     private func resetRealtimeBuffers() {

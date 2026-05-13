@@ -1,9 +1,11 @@
 import AppKit
+import Combine
 import SwiftUI
 
 @Observable
 final class HUDState {
     var recordingState: RecordingState = .idle
+    var sessionStartedAt: Date?
 }
 
 private final class PassThroughView: NSView {
@@ -35,12 +37,17 @@ final class RecordingHUDManager {
     }
 
     func update(recordingState: RecordingState) {
+        updateSessionStart(for: recordingState)
         withAnimation(.bouncy) {
             state.recordingState = recordingState
         }
         if panel == nil {
             createAndShowPanel()
         } else {
+            if let panel {
+                applyWindowLevel(panel, for: recordingState)
+                positionPanel(panel)
+            }
             panel?.orderFront(nil)
         }
     }
@@ -55,7 +62,7 @@ final class RecordingHUDManager {
         p.becomesKeyOnlyIfNeeded = true
         p.isFloatingPanel = true
         p.hidesOnDeactivate = false
-        p.level = NSWindow.Level.floating
+        applyWindowLevel(p, for: state.recordingState)
         p.backgroundColor = NSColor.clear
         p.isOpaque = false
         p.hasShadow = false
@@ -86,15 +93,46 @@ final class RecordingHUDManager {
     private func positionPanel(_ panel: NSPanel) {
         guard let screen = NSScreen.main else { return }
         let x = screen.frame.midX - panelWidth / 2
-        let y = screen.visibleFrame.maxY - panelHeight - 4
+        let y: CGFloat
+
+        switch state.recordingState {
+        case .realtimeConnecting, .realtimeStreaming:
+            // Realtime: "Dynamic Island" style, colado no topo/menu bar.
+            y = screen.frame.maxY - panelHeight
+        default:
+            // Modo normal: posição antiga, abaixo da menu bar.
+            y = screen.visibleFrame.maxY - panelHeight - 4
+        }
+
         panel.setFrame(NSRect(x: x, y: y, width: panelWidth, height: panelHeight), display: false)
+    }
+
+    private func applyWindowLevel(_ panel: NSPanel, for recordingState: RecordingState) {
+        switch recordingState {
+        case .realtimeConnecting, .realtimeStreaming:
+            panel.level = NSWindow.Level.statusBar
+        default:
+            panel.level = NSWindow.Level.floating
+        }
+    }
+
+    private func updateSessionStart(for newState: RecordingState) {
+        let wasActive = state.recordingState.isActive
+        let isActive = newState.isActive
+
+        if !wasActive && isActive {
+            state.sessionStartedAt = Date()
+        } else if wasActive && !isActive {
+            state.sessionStartedAt = nil
+        }
     }
 }
 
 private struct RecordingHUDView: View {
     @Environment(HUDState.self) private var hudState
     @Namespace private var namespace
-    @State private var elapsed: TimeInterval = 0
+    @State private var now = Date()
+    private let ticker = Timer.publish(every: 0.25, on: .main, in: .common).autoconnect()
 
     var body: some View {
         GlassEffectContainer(spacing: 0) {
@@ -102,7 +140,7 @@ private struct RecordingHUDView: View {
             case .recording:
                 HStack(spacing: 10) {
                     WaveformBars()
-                    Text(timeString(elapsed))
+                    Text(timeString(elapsedSeconds))
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
                         .monospacedDigit()
                         .foregroundStyle(.primary)
@@ -116,10 +154,11 @@ private struct RecordingHUDView: View {
                 VStack(alignment: .leading, spacing: 7) {
                     HStack(spacing: 8) {
                         RealtimeBadgeLogo()
-                        Spacer()
-                        Text(timeString(elapsed))
+                        Text(timeString(elapsedSeconds))
                             .font(.system(size: 13, weight: .semibold, design: .rounded))
                             .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                        Spacer()
                     }
                     Text("Connecting realtime transcription…")
                         .font(.system(size: 12, weight: .regular, design: .rounded))
@@ -136,15 +175,17 @@ private struct RecordingHUDView: View {
                 VStack(alignment: .leading, spacing: 7) {
                     HStack(spacing: 8) {
                         RealtimeBadgeLogo()
-                        Spacer()
-                        Text(timeString(elapsed))
+                        Text(timeString(elapsedSeconds))
                             .font(.system(size: 13, weight: .semibold, design: .rounded))
                             .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                        Spacer()
                     }
-                    Text(partialText.isEmpty ? "Listening…" : partialText)
+                    Text(partialText.isEmpty ? "Listening…" : realtimeTailText(from: partialText))
                         .font(.system(size: 12, weight: .regular, design: .rounded))
                         .foregroundStyle(.primary)
                         .lineLimit(3)
+                        .truncationMode(.head)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .padding(.horizontal, 16)
@@ -200,21 +241,33 @@ private struct RecordingHUDView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .padding(.top, 4)
-        .task(id: hudState.recordingState) {
-            switch hudState.recordingState {
-            case .recording, .realtimeConnecting, .realtimeStreaming:
-                break
-            default:
-                elapsed = 0
-                return
-            }
-            let start = Date()
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(500))
-                elapsed = Date().timeIntervalSince(start)
-            }
+        .padding(.top, topPadding)
+        .onReceive(ticker) { tick in
+            now = tick
         }
+    }
+
+    private var elapsedSeconds: TimeInterval {
+        guard hudState.recordingState.isActive,
+              let startedAt = hudState.sessionStartedAt else { return 0 }
+        return max(0, now.timeIntervalSince(startedAt))
+    }
+
+    private var topPadding: CGFloat {
+        switch hudState.recordingState {
+        case .realtimeConnecting, .realtimeStreaming:
+            0
+        default:
+            4
+        }
+    }
+
+    private func realtimeTailText(from text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let words = trimmed.split(whereSeparator: \.isWhitespace)
+        guard words.count > 40 else { return trimmed }
+        let tail = words.suffix(40).joined(separator: " ")
+        return "… " + tail
     }
 
     private func timeString(_ seconds: TimeInterval) -> String {
@@ -228,7 +281,7 @@ private struct RealtimeBadgeLogo: View {
         Image("Dock")
             .resizable()
             .interpolation(.high)
-            .frame(width: 14, height: 14)
+            .frame(width: 20, height: 20)
             .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
     }
 }
