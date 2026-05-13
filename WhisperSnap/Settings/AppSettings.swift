@@ -68,16 +68,29 @@ final class AppSettings {
         didSet { UserDefaults.standard.set(privateMode, forKey: "privateMode") }
     }
 
-    var alwaysCopyToClipboard: Bool = UserDefaults.standard.bool(forKey: "alwaysCopyToClipboard") {
+    var alwaysCopyToClipboard: Bool = {
+        let key = "alwaysCopyToClipboard"
+        if UserDefaults.standard.object(forKey: key) == nil {
+            return AppDistribution.isAppStore
+        }
+        return UserDefaults.standard.bool(forKey: key)
+    }() {
         didSet { UserDefaults.standard.set(alwaysCopyToClipboard, forKey: "alwaysCopyToClipboard") }
     }
 
     var autoInsertText: Bool = {
         let key = "autoInsertText"
+        if !AppDistribution.supportsDirectTextInsertion { return false }
         if UserDefaults.standard.object(forKey: key) == nil { return true }
         return UserDefaults.standard.bool(forKey: key)
     }() {
-        didSet { UserDefaults.standard.set(autoInsertText, forKey: "autoInsertText") }
+        didSet {
+            if !AppDistribution.supportsDirectTextInsertion && autoInsertText {
+                autoInsertText = false
+                return
+            }
+            UserDefaults.standard.set(autoInsertText, forKey: "autoInsertText")
+        }
     }
 
     var selectedLanguage: String = UserDefaults.standard.string(forKey: "selectedLanguage") ?? "auto" {

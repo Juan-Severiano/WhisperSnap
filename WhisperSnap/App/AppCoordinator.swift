@@ -41,7 +41,9 @@ final class AppCoordinator {
         hasSetup = true
         self.modelContainer = modelContainer
         ShortcutManager.setup(coordinator: self)
-        inserter.requestPermissionIfNeeded()
+        if AppDistribution.supportsDirectTextInsertion {
+            inserter.requestPermissionIfNeeded()
+        }
         modelManager.refreshDownloadedModels()
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(200))
@@ -361,7 +363,7 @@ final class AppCoordinator {
     // MARK: - Text Delivery
 
     private func deliverText(_ text: String) {
-        if settings.autoInsertText {
+        if AppDistribution.supportsDirectTextInsertion && settings.autoInsertText {
             try? inserter.insert(text)
         }
         if settings.alwaysCopyToClipboard {

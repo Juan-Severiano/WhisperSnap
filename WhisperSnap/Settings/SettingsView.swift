@@ -100,8 +100,15 @@ private struct GeneralSettingsTab: View {
 
             Section("Behaviour") {
                 Toggle("Auto-insert text into focused field", isOn: $settings.autoInsertText)
+                    .disabled(!AppDistribution.supportsDirectTextInsertion)
                 Toggle("Always copy to clipboard", isOn: $settings.alwaysCopyToClipboard)
                 Toggle("Private mode (don't save history)", isOn: $settings.privateMode)
+
+                if !AppDistribution.supportsDirectTextInsertion {
+                    Text("App Store builds copy the transcript to the clipboard. Direct insertion into other apps requires Accessibility access and is only available in the Direct build.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Section("System") {
