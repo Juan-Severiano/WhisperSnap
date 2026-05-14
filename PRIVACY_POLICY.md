@@ -1,6 +1,6 @@
 # Privacy Policy for WhisperSnap
 
-Effective date: May 13, 2026
+Effective date: May 14, 2026
 
 WhisperSnap is a macOS menu bar application that converts speech into text. This Privacy Policy explains what data WhisperSnap processes, how that data is used, and what choices users have.
 
@@ -10,6 +10,7 @@ WhisperSnap is designed to minimize data collection.
 
 - Voice transcription can run locally on the device.
 - If the user enables optional OpenAI-powered features, audio or text may be sent to OpenAI to provide those features.
+- Third-party AI sharing is disabled by default and only occurs after explicit in-app consent.
 - WhisperSnap does not sell personal data.
 - WhisperSnap does not use third-party advertising SDKs.
 - WhisperSnap does not track users across apps or websites.
@@ -36,7 +37,7 @@ WhisperSnap processes the text generated from speech transcription.
 
 If the user enables AI Cleanup or remote transcription features, WhisperSnap may send text, audio, prompts, model identifiers, and related request metadata to OpenAI or another user-configured endpoint in order to return cleaned or realtime transcription results.
 
-These features are optional and user-controlled.
+These features are optional and user-controlled. Before any third-party AI transmission, the user must enable in-app consent in Settings under "Third-Party AI Data Sharing."
 
 ### 4. API keys entered by the user
 
@@ -79,6 +80,8 @@ If the user enables remote AI features, WhisperSnap may interact with:
 
 Those services process data under their own terms and privacy policies. Users should review the privacy policy of any API provider they choose to use with WhisperSnap.
 
+WhisperSnap is intended to be used only with third-party providers that offer the same or stronger protection of user data as described in this policy.
+
 ## Tracking and Advertising
 
 WhisperSnap does not use tracking for advertising purposes.
@@ -91,6 +94,7 @@ WhisperSnap does not sell personal information.
 
 WhisperSnap only shares data in the following limited cases:
 
+- after the user grants explicit in-app consent for Third-Party AI Data Sharing and enables an optional remote AI feature
 - when the user enables a remote AI or transcription provider
 - when required by law, regulation, or valid legal process
 - when necessary to protect the rights, safety, or integrity of the app or its users
@@ -109,6 +113,7 @@ Users can control WhisperSnap's privacy behavior by:
 
 - denying microphone permission
 - leaving remote AI features disabled
+- disabling Third-Party AI Data Sharing consent
 - not entering an API key
 - enabling Private Mode
 - disabling transcription history
@@ -132,4 +137,3 @@ This Privacy Policy may be updated from time to time. Material changes will be r
 For privacy questions or requests, contact:
 
 `juansoussev@gmail.com`
-

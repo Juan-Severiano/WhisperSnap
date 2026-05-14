@@ -175,6 +175,19 @@ final class AppCoordinator {
     }
 
     private func startRemoteRealtimeRecording() async {
+        if settings.demoModeEnabled {
+            showNotice("Demo Mode: remote realtime simulated locally.")
+            await startLocalRealtimeRecording()
+            return
+        }
+
+        guard settings.thirdPartyAIConsentGranted else {
+            await startLocalRecording(
+                notice: "Remote realtime requires Third-Party AI permission. Enable it in Settings > AI Cleanup."
+            )
+            return
+        }
+
         setState(.realtimeConnecting)
         resetRealtimeBuffers()
         activeRealtimeSession = .remote
@@ -342,14 +355,30 @@ final class AppCoordinator {
     }
 
     private func applySanitizationIfEnabled(_ text: String) async -> (final: String, original: String?) {
-        guard settings.enableSanitization,
-              let key = try? settings.loadOpenAIKey(),
-              !text.isEmpty else {
+        guard settings.enableSanitization, !text.isEmpty else {
             return (text, nil)
         }
+
+        guard settings.thirdPartyAIConsentGranted else {
+            return (text, nil)
+        }
+
+        if settings.demoModeEnabled {
+            let sanitized = TextSanitizerService.demoSanitize(text, mode: settings.sanitizationMode)
+            return (sanitized, sanitized == text ? nil : text)
+        }
+
+        guard
+            let key = try? settings.loadOpenAIKey(),
+            !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            return (text, nil)
+        }
+
         guard let sanitized = try? await sanitizer.sanitize(text, apiKey: key, mode: settings.sanitizationMode) else {
             return (text, nil)
         }
+
         return (sanitized, text)
     }
 

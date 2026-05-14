@@ -130,6 +130,23 @@ final class AppSettings {
         didSet { UserDefaults.standard.set(sanitizationMode.rawValue, forKey: "sanitizationMode") }
     }
 
+    var thirdPartyAIConsentGranted: Bool = UserDefaults.standard.bool(forKey: "thirdPartyAIConsentGranted") {
+        didSet {
+            UserDefaults.standard.set(thirdPartyAIConsentGranted, forKey: "thirdPartyAIConsentGranted")
+
+            guard !thirdPartyAIConsentGranted else { return }
+
+            if realtimeBackend == .remote {
+                realtimeBackend = .local
+            }
+            enableSanitization = false
+        }
+    }
+
+    var demoModeEnabled: Bool = UserDefaults.standard.bool(forKey: "demoModeEnabled") {
+        didSet { UserDefaults.standard.set(demoModeEnabled, forKey: "demoModeEnabled") }
+    }
+
     var activeOnlineModelID: String {
         if let presetModel = onlineModelPreset.modelID {
             return presetModel

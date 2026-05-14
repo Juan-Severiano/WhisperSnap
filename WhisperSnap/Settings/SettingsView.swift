@@ -78,7 +78,16 @@ private struct GeneralSettingsTab: View {
 
             Section("Realtime") {
                 Toggle("Enable realtime mode", isOn: $settings.realtimeEnabled)
-                Picker("Realtime engine", selection: $settings.realtimeBackend) {
+                Picker("Realtime engine", selection: Binding(
+                    get: { settings.realtimeBackend },
+                    set: { newValue in
+                        if newValue == .remote && !settings.thirdPartyAIConsentGranted {
+                            settings.realtimeBackend = .local
+                        } else {
+                            settings.realtimeBackend = newValue
+                        }
+                    }
+                )) {
                     ForEach(RealtimeBackend.allCases, id: \.self) { backend in
                         Text(backend.displayName).tag(backend)
                     }
@@ -86,6 +95,11 @@ private struct GeneralSettingsTab: View {
                 Text("Default is Local. Use Remote only when you want OpenAI realtime streaming.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if !settings.thirdPartyAIConsentGranted {
+                    Text("Remote realtime is locked until you allow Third-Party AI Data Sharing in the AI Cleanup tab.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
             }
 
             Section("Transcription") {
@@ -372,6 +386,12 @@ private struct OnlineModelsTab: View {
                 Text("For websocket realtime, prefer `gpt-realtime-whisper`.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                if !settings.thirdPartyAIConsentGranted {
+                    Text("Third-Party AI Data Sharing permission is required before remote requests can be sent.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
             }
 
             SharedOpenAIKeySection(settings: settings, title: "OpenAI API Key")
@@ -433,6 +453,12 @@ private struct SharedOpenAIKeySection: View {
             Text("This key is shared with AI Cleanup and stored in macOS Keychain.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            if settings.demoModeEnabled {
+                Text("Demo Mode is enabled, so this key is optional for feature testing.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .onAppear {
             apiKeyInput = (try? settings.loadOpenAIKey()) ?? ""
@@ -447,9 +473,46 @@ private struct AISettingsTab: View {
 
     var body: some View {
         Form {
+            Section("Third-Party AI Data Sharing") {
+                Toggle("Allow sending data to third-party AI providers", isOn: $settings.thirdPartyAIConsentGranted)
+
+                Text("Optional AI features only run after this permission is enabled.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Sent data: microphone audio (remote realtime), transcript text (AI cleanup), selected model, language, and request metadata.")
+                    Text("Providers: OpenAI (`api.openai.com`) or a provider endpoint you configure.")
+                    Text("Purpose: return remote transcription or cleaned text.")
+                    Text("Your OpenAI API key is stored in macOS Keychain and only sent to authenticate your requests.")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+                Toggle("Enable Demo Mode (no API key required)", isOn: $settings.demoModeEnabled)
+                Text("Demo Mode simulates remote AI behavior locally so App Review can verify all features without a live key.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section {
-                Toggle("Enable AI text cleanup", isOn: $settings.enableSanitization)
+                Toggle("Enable AI text cleanup", isOn: Binding(
+                    get: { settings.enableSanitization },
+                    set: { newValue in
+                        if newValue && !settings.thirdPartyAIConsentGranted {
+                            settings.enableSanitization = false
+                        } else {
+                            settings.enableSanitization = newValue
+                        }
+                    }
+                ))
                     .help("Uses OpenAI to fix punctuation and remove filler words after transcription.")
+
+                if !settings.thirdPartyAIConsentGranted {
+                    Text("Enable Third-Party AI Data Sharing above to use AI cleanup.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
             }
 
             if settings.enableSanitization {
@@ -501,6 +564,12 @@ private struct AboutTab: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: 300)
+
+            Text("Third-party AI sharing controls are available in Settings > AI Cleanup.")
+                .multilineTextAlignment(.center)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: 320)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
